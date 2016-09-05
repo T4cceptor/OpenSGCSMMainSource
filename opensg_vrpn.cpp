@@ -213,15 +213,12 @@ bool isGrounded(){
     if (iAct->didHit())
     {
 		float dis = (iAct->getHitPoint().subZero() - mgr->getTranslation()).length();
-		std::cout << "distance: " << dis << std::endl;
+		//std::cout << "distance: " << dis << std::endl;
 		if(dis > general::minDistanceToFloor * general::scale ){
 			return false;
 		}
 		return true;
     }
-	else {
-			std::cout << "no hit" << std::endl;
-	}
 	return false;
 }
 
@@ -395,7 +392,7 @@ void enableMouseCamera(){
 }
 
 
-
+bool prepToStop = false;
 void setupGLUT(int *argc, char *argv[])
 {
 	glutInit(argc, argv);
@@ -429,6 +426,21 @@ void setupGLUT(int *argc, char *argv[])
 		if(state == 1){
 			// gameModel.physicCtrl.calculateNewTick();
 			gameModel.physicCtrl.calculateNewTickForPhysicsObject(gameModel.getHook());
+			Vec3f direction = gameModel.getHook().getDirection();
+			if(direction.length() > 0){
+				bool didHit = gameModel.physicCtrl.collision(gameModel.getHook(), gameModel.getCave());
+				if(didHit){
+					// std::cout << "did Hit" << std::endl;
+					prepToStop = true;
+					// Vec3f newDirection = Vec3f(-direction[0] * 0.7,direction[1] * 0.9,-direction[2] * 0.7) ;
+					// gameModel.getHook().setDirection(newDirection * 0.7);
+				} else if(prepToStop){
+					prepToStop = false;
+					// gameModel.getHook().setDirection(0,0,0);
+					// Vec3f newDirection = Vec3f(-direction[0] * 0.7,direction[1] * 0.9,-direction[2] * 0.7) ;
+					gameModel.getHook().setDirection(gameModel.physicCtrl.getReflectionVector() * 0.8);
+				}
+			}
 			// TODO:
 			// if(didHitPlattform(gameModel.getHook())){
 			//		changeGameState();

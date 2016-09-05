@@ -10,6 +10,12 @@
 #include <OpenSG/OSGGLUTWindow.h>
 #include <OpenSG/OSGMultiDisplayWindow.h>
 #include <OpenSG/OSGSceneFileHandler.h>
+#include <OSGIntersectAction.h>
+#include <OSGSimpleGeometry.h>
+#include <OpenSG/OSGFieldContainerUtils.h>
+#include <OSGSceneGraphUtils.h>
+#include <OSGSimpleAttachment.h>
+#include <OSGAttachment.h>
 
 #include <OSGCSM/OSGCAVESceneManager.h>
 #include <OSGCSM/OSGCAVEConfig.h>
@@ -23,6 +29,7 @@
 #include "VRGPhysicsObject.h"
 #include "PhysicsController.h"
 #include "NodeFactory.h"
+#include "Config.h"
 
 OSG_USING_NAMESPACE
 
@@ -44,6 +51,7 @@ int winWidth, winHeight, mouseX, mouseY;
 float horizontalAngle = 0, verticalAngle = 0;
 float mousespeed;
 int state;
+int currentPosition = 0;
 
 Quaternion wand_orientation = Quaternion();
 Vec3f wand_position = Vec3f();
@@ -160,12 +168,69 @@ void print_tracker()
 	std::cout << "direction: " << wand_direction << '\n';
 }
 
+/*----------9.1----------*/
+Action::ResultE enter(Node* node){
+	// if(node->getCore()->getType().isDerivedFrom(ComponentTransform::getClassType()))
+	std::cout << "Enter node : " << node << std::endl;
+	return Action::Continue;
+}
+
+Action::ResultE leave(Node* node, Action::ResultE result){
+	std::cout << "Leaving node: " << node << "with code: " << result << std::endl;
+	return result;
+}
+
+
+bool isGrounded(){
+	//Vec3f cavePosition = mgr->getTranslation();
+	//Vec3f playerPosition = cavePosition + Vec3f(head_position[0], 0, head_position[2] - 200); // head_position
+
+	//float distance = (pltPositions::positions[currentPosition] - playerPosition).length();
+
+	////std::cout << "cavePosition: " << cavePosition 
+	////	<< " , head_position: " << head_position 
+	////	<< " , playerPosition: " << playerPosition 
+	////	<< " , distance: " << distance 
+	////	<< std::endl;
+
+	//if(distance > pltPositions::maxDistance * general::scale){
+	//	return false;
+	//}
+
+	//return true;
+
+	Line ray = Line(mgr->getTranslation() - Vec3f(0, 1 * general::scale, 0), Vec3f(0,-1,0));
+	// IntersectAction *iAct = (IntersectActionRefPtr)IntersectAction::create();
+	IntersectActionRefPtr iAct = (IntersectActionRefPtr)IntersectAction::create();
+    iAct->setLine(ray);
+	NodeRefPtr someNode = gameModel.getCave().getRootNode();
+
+	//OSG::SceneGraphPrinter sgp(someNode);
+	//sgp.printDownTree(std::cout);
+	// traverse(someNode, enter, leave);
+	iAct->apply((Node * const)someNode);
+
+    if (iAct->didHit())
+    {
+		float dis = (iAct->getHitPoint().subZero() - mgr->getTranslation()).length();
+		std::cout << "distance: " << dis << std::endl;
+		if(dis > general::minDistanceToFloor * general::scale ){
+			return false;
+		}
+		return true;
+    }
+	else {
+			std::cout << "no hit" << std::endl;
+	}
+	return false;
+}
+
 void keyboard(unsigned char k, int x, int y)
 {
         tempCamTo.normalize();
         Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
-		Vec3f rightDirection = (movementDirection % Vec3f(0,1,0));
-		float multiplier = 200.0f;
+		Vec3f rightDirection = (movementDirection % general::upVector);
+		float multiplier = general::movementFactor * general::scale;
         Real32 ed;
         switch(k)
         {
@@ -173,6 +238,31 @@ void keyboard(unsigned char k, int x, int y)
                         cleanup();
                         exit(EXIT_SUCCESS);
                         break;
+				case '1':
+						state = 1;
+						std::cout << "new state: " << state << '\n';
+                        break;
+				case '2':
+						state = 2;
+						std::cout << "new state: " << state << '\n';
+                        break;
+				case 't':
+						std::cout << "state: " << state << '\n';
+						isGrounded();
+                        break;
+				case 'c':
+						currentPosition = (currentPosition + 1) % pltPositions::size;
+						mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
+						mgr->setYRotate(pltPositions::rotation[currentPosition]);
+						std::cout << "moving to position: " << currentPosition << '\n';
+                        break;
+				case 'v':
+						currentPosition = (currentPosition - 1) % pltPositions::size;
+						mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
+						mgr->setYRotate(pltPositions::rotation[currentPosition]);
+						std::cout << "moving to position: " << currentPosition << '\n';
+                        break;
+
                 case 'e':
                         ed = mgr->getEyeSeparation() * .9f;
                         std::cout << "Eye distance: " << ed << '\n';
@@ -195,16 +285,17 @@ void keyboard(unsigned char k, int x, int y)
                         // mgr->
                         break;
                 case 'a':
-                        mgr->setTranslation(mgr->getTranslation() - rightDirection * multiplier);
+                        mgr->setTranslation(mgr->getTranslation() + rightDirection * multiplier);
                         break;
                 case 's':
                         mgr->setTranslation(mgr->getTranslation() + movementDirection * multiplier);
                         break;
                 case 'd':
-                        mgr->setTranslation(mgr->getTranslation() + rightDirection * multiplier);
+                        mgr->setTranslation(mgr->getTranslation() - rightDirection * multiplier);
                         break;
                 case 'f':
                         std::cout << "mgr translation: " << mgr->getTranslation() << std::endl;
+						std::cout << "mgr y rotation: " << mgr->getYRotate() << std::endl;
                         break;
                 case 'r':
                         mgr->setTranslation(Vec3f(10,10,0));
@@ -231,17 +322,13 @@ Quaternion MatrixLookAt(OSG::Pnt3f from, OSG::Pnt3f at, OSG::Vec3f up){
 		Vec3f newup = view % right;
 		Vec3f objForward = Vec3f(0,1,0); 
 		Vec3f objUp = Vec3f(0,1,0);
-
 		float dot2 =  right * objForward;
 		Vec3f newView = Vec3f(view[0],view[1],0);
 		newView.normalize();
 		float realDotXYPlane = newView * objForward;
 		float realAngle = acos(realDotXYPlane);
-
 		return Quaternion(objUp, dot2 > 0 ? -realAngle : realAngle);
-
 		// Quaternion q1 = Quaternion(objUp, dot2 > 0 ? -realAngle : realAngle);
-
 		/*
 		float dot3 = newup * objUp;
 		float angle2 = 0.0f;
@@ -251,21 +338,18 @@ Quaternion MatrixLookAt(OSG::Pnt3f from, OSG::Pnt3f at, OSG::Vec3f up){
 		float dot4 = view * objUp;
 		Quaternion q2 = Quaternion(Vec3f(1,0,0), dot4 < 0 ? -angle2 : angle2);
 		*/
-
 		// return q1;
 }
 
 void motion(int x, int y) {
         float deltaX = (mouseX - x);
         float deltaY = (mouseY - y);
-
         if(deltaX != 0){
                 mgr->setYRotate(mgr->getYRotate() + 0.01 * deltaX);
                 tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
                 mouseX = x;
                 deltaX = x;
         }
-
         glutPostRedisplay();
         if(x <= 35 || x > winWidth - 35 || y <= 35 || y > winHeight - 35){
                 glutWarpPointer(winWidth/2, winHeight/2);
@@ -278,7 +362,10 @@ void rightMouseButtonFunction(){
 	// Vec3f direction = (camTo - camFrom) * 50;
 	tempCamTo.normalize();
 	Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
-	gameModel.moveHook(mgr->getTranslation() + movementDirection * 5, movementDirection * -10);
+	gameModel.moveHook(
+		mgr->getTranslation() + movementDirection * hook::movementOffsetScale * general::scale, 
+		movementDirection * hook::movementVectorScale * general::scale
+	);
 
 	// gameModel.createNewHook(camTo, direction);
 	// gameModel.createNewLight(camTo);
@@ -306,6 +393,8 @@ void enableMouseCamera(){
 	//mousePressed = true;
 	//oldTimeSinceStart = 0;
 }
+
+
 
 void setupGLUT(int *argc, char *argv[])
 {
@@ -336,18 +425,38 @@ void setupGLUT(int *argc, char *argv[])
 
 	glutIdleFunc([]()
 	{
-		gameModel.physicCtrl.calculateNewTick();
+		// TODO: Performance improvements
+		if(state == 1){
+			// gameModel.physicCtrl.calculateNewTick();
+			gameModel.physicCtrl.calculateNewTickForPhysicsObject(gameModel.getHook());
+			// TODO:
+			// if(didHitPlattform(gameModel.getHook())){
+			//		changeGameState();
+			// // evtl. in anderen GameState verschieben
+			//		animateHook(); // TODO!
+			//		animateRope(); // TODO!
+			//		when finished animation:
+			//		moveToNextPlattform();
+			//		changeGameState();
+			// }
 
-		check_tracker();
-		const auto speed = 1.f;
-		mgr->setUserTransform(head_position, head_orientation);
+			if(!isGrounded()){
+				mgr->setTranslation(mgr->getTranslation() - general::upVector * general::scale);
+			}
+		}
+
+		/*
 		if(state == 1){
 			mgr->setTranslation(mgr->getTranslation() + wand_direction * 250);
 		} else if (state == 2){
 			mgr->setTranslation(mgr->getTranslation() - wand_direction * 250);
 		}
+		*/
 		
 		// mgr->setTranslation(mgr->getTranslation() + speed * analog_values);
+		check_tracker();
+		const auto speed = 1.f;
+		mgr->setUserTransform(head_position, head_orientation); // dont touch
 		commitChanges();
 		mgr->redraw();
 		// the changelist should be cleared - else things could be copied multiple times
@@ -364,8 +473,6 @@ void setupGLUT(int *argc, char *argv[])
 	camTo = * new Pnt3f(1,0,0);
 	camUp = * new Vec3f(0,0,1);
 	tempCamTo = * new Vec4f(0,0,-1,0);
-
-
 }
 
 
@@ -377,6 +484,8 @@ int main(int argc, char **argv)
 #endif
 	try
 	{
+		std::cout << "config test: " << config::test << std::endl;
+		std::cout << "config test2: " << physics::speed << std::endl;
 		bool cfgIsSet = false;
 
 		// ChangeList needs to be set for OpenSG 1.4
@@ -386,6 +495,7 @@ int main(int argc, char **argv)
 		// evaluate intial params
 		for(int a=1 ; a<argc ; ++a)
 		{
+			std::cout << "argc: " << a << std::endl;
 			if( argv[a][0] == '-' )
 			{
 				if ( strcmp(argv[a],"-f") == 0 ) 
@@ -449,7 +559,7 @@ int main(int argc, char **argv)
 		mgr->getWindow()->init();
 		mgr->turnWandOff();
 		mgr->setHeadlight(false);
-
+		mgr->setYRotate(1.0f);
 	}
 	catch(const std::exception& e)
 	{

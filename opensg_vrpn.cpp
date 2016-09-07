@@ -60,6 +60,8 @@ Vec3f wand_direction = Vec3f();
 Vec3f start_position = Vec3f(0,0,0);
 Vec3f end_position = Vec3f(0,0,0);
 
+bool prepToStop = false;
+
 void cleanup()
 {
 	delete mgr;
@@ -355,14 +357,19 @@ void motion(int x, int y) {
         }
 }
 
+
+
 void rightMouseButtonFunction(){
 	// Vec3f direction = (camTo - camFrom) * 50;
+	prepToStop = false;
 	tempCamTo.normalize();
 	Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
+
 	gameModel.moveHook(
 		mgr->getTranslation() + movementDirection * hook::movementOffsetScale * general::scale, 
 		movementDirection * hook::movementVectorScale * general::scale
 	);
+
 
 	// gameModel.createNewHook(camTo, direction);
 	// gameModel.createNewLight(camTo);
@@ -392,7 +399,7 @@ void enableMouseCamera(){
 }
 
 
-bool prepToStop = false;
+bool changeState = false;
 void setupGLUT(int *argc, char *argv[])
 {
 	glutInit(argc, argv);
@@ -425,20 +432,38 @@ void setupGLUT(int *argc, char *argv[])
 		// TODO: Performance improvements
 		if(state == 1){
 			// gameModel.physicCtrl.calculateNewTick();
-			gameModel.physicCtrl.calculateNewTickForPhysicsObject(gameModel.getHook());
+
 			Vec3f direction = gameModel.getHook().getDirection();
 			if(direction.length() > 0){
+				gameModel.physicCtrl.calculateNewTickForPhysicsObject(gameModel.getHook());
+				// TODO: animateRope();
+				if(gameModel.getHook().getDirection().length() > 0){
 				bool didHit = gameModel.physicCtrl.collision(gameModel.getHook(), gameModel.getCave());
 				if(didHit){
-					// std::cout << "did Hit" << std::endl;
+					if(changeState){
+						state = 0;
+						changeState = false;
+					}
 					prepToStop = true;
-					// Vec3f newDirection = Vec3f(-direction[0] * 0.7,direction[1] * 0.9,-direction[2] * 0.7) ;
-					// gameModel.getHook().setDirection(newDirection * 0.7);
-				} else if(prepToStop){
+				} else if(prepToStop) {
 					prepToStop = false;
-					// gameModel.getHook().setDirection(0,0,0);
-					// Vec3f newDirection = Vec3f(-direction[0] * 0.7,direction[1] * 0.9,-direction[2] * 0.7) ;
-					gameModel.getHook().setDirection(gameModel.physicCtrl.getReflectionVector() * 0.8);
+					// TODO
+					// bool didHitPlattform = false;
+					// for(int i = 0; i < pltPositions::size; i++){
+					//		//TODO
+					//		if((gameModel.getHook().getPosition() - pltPositions::positions[i]).length < general::plattformHitDistance)
+					//			didHitPlattform = true;
+					//	}
+					// if(didHitPlattform){
+					//		// TODO
+					//		state = 2;
+					// }
+
+					Vec3f reflectionVector = gameModel.physicCtrl.getReflectionVector();
+					std::cout << "direction: " << gameModel.getHook().getDirection() << std::endl;
+					std::cout << "reflection: " << reflectionVector << std::endl;
+					gameModel.getHook().setDirection(reflectionVector);
+				}
 				}
 			}
 			// TODO:

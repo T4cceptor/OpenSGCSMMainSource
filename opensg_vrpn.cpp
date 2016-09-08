@@ -61,6 +61,7 @@ Vec3f start_position = Vec3f(0,0,0);
 Vec3f end_position = Vec3f(0,0,0);
 
 bool prepToStop = false;
+float mouseDistance = 0;
 
 void cleanup()
 {
@@ -182,46 +183,30 @@ Action::ResultE leave(Node* node, Action::ResultE result){
 	return result;
 }
 
-
 bool isGrounded(){
-	//Vec3f cavePosition = mgr->getTranslation();
-	//Vec3f playerPosition = cavePosition + Vec3f(head_position[0], 0, head_position[2] - 200); // head_position
-
-	//float distance = (pltPositions::positions[currentPosition] - playerPosition).length();
-
-	////std::cout << "cavePosition: " << cavePosition 
-	////	<< " , head_position: " << head_position 
-	////	<< " , playerPosition: " << playerPosition 
-	////	<< " , distance: " << distance 
-	////	<< std::endl;
-
-	//if(distance > pltPositions::maxDistance * general::scale){
-	//	return false;
-	//}
-
-	//return true;
-
 	Line ray = Line(mgr->getTranslation() - Vec3f(0, 1 * general::scale, 0), Vec3f(0,-1,0));
-	// IntersectAction *iAct = (IntersectActionRefPtr)IntersectAction::create();
 	IntersectActionRefPtr iAct = (IntersectActionRefPtr)IntersectAction::create();
     iAct->setLine(ray);
 	NodeRefPtr someNode = gameModel.getCave().getRootNode();
-
-	//OSG::SceneGraphPrinter sgp(someNode);
-	//sgp.printDownTree(std::cout);
-	// traverse(someNode, enter, leave);
 	iAct->apply((Node * const)someNode);
-
     if (iAct->didHit())
     {
 		float dis = (iAct->getHitPoint().subZero() - mgr->getTranslation()).length();
-		//std::cout << "distance: " << dis << std::endl;
 		if(dis > general::minDistanceToFloor * general::scale ){
 			return false;
 		}
 		return true;
     }
 	return false;
+}
+
+void printHookDistanceToPlattforms(){
+	std::cout << "hook pposition: " << gameModel.getHook().getPosition()  << std::endl;
+	for(int i = 0; i < pltPositions::size; i++){
+		Vec3f scaledPosition = pltPositions::positions[i] * general::scale;
+		float distance =  (gameModel.getHook().getPosition() - scaledPosition).length();
+		std::cout << "plattform: " << i << "  ,distance: " << distance << "  ,plattform position: " << pltPositions::positions[i] << std::endl;
+	}
 }
 
 void keyboard(unsigned char k, int x, int y)
@@ -279,6 +264,9 @@ void keyboard(unsigned char k, int x, int y)
                 case 'i':
                         print_tracker();
                         break;
+				 case 'b':
+                        printHookDistanceToPlattforms();
+                        break;
                 case 'w':
                         mgr->setTranslation(mgr->getTranslation() - movementDirection * multiplier);
                         // mgr->
@@ -293,8 +281,9 @@ void keyboard(unsigned char k, int x, int y)
                         mgr->setTranslation(mgr->getTranslation() - rightDirection * multiplier);
                         break;
                 case 'f':
-                        std::cout << "mgr translation: " << mgr->getTranslation() << std::endl;
+                        std::cout << "mgr position: " << mgr->getTranslation() << std::endl;
 						std::cout << "mgr y rotation: " << mgr->getYRotate() << std::endl;
+						std::cout << "hook position: " << gameModel.getHook().getPosition() << std::endl;
                         break;
                 case 'r':
                         mgr->setTranslation(Vec3f(10,10,0));
@@ -340,9 +329,16 @@ Quaternion MatrixLookAt(OSG::Pnt3f from, OSG::Pnt3f at, OSG::Vec3f up){
 		// return q1;
 }
 
+bool leftMouseDown = false;
 void motion(int x, int y) {
         float deltaX = (mouseX - x);
         float deltaY = (mouseY - y);
+
+		if(!leftMouseDown){
+			mouseDistance += deltaY;
+			return;
+		}
+
         if(deltaX != 0){
                 mgr->setYRotate(mgr->getYRotate() + 0.01 * deltaX);
                 tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
@@ -355,6 +351,9 @@ void motion(int x, int y) {
                 mouseX = winWidth/2;
                 mouseY = winHeight/2;
         }
+
+		
+
 }
 
 
@@ -364,16 +363,18 @@ void rightMouseButtonFunction(){
 	prepToStop = false;
 	tempCamTo.normalize();
 	Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
-
+	
+	std::cout << "moving hook with strenght: " << mouseDistance << std::endl;
 	gameModel.moveHook(
 		mgr->getTranslation() + movementDirection * hook::movementOffsetScale * general::scale, 
-		movementDirection * hook::movementVectorScale * general::scale
+		-movementDirection * general::scale * ( abs(mouseDistance) / 50 )
 	);
 
 
 	// gameModel.createNewHook(camTo, direction);
 	// gameModel.createNewLight(camTo);
 }
+
 
 void mouse(int button, int state, int x, int y) {
 	// react to mouse button presses
@@ -384,9 +385,19 @@ void mouse(int button, int state, int x, int y) {
 	//}
 	if(button == GLUT_RIGHT_BUTTON){
 		if(!state){
+			mouseDistance = 0;
+		} else {
 			rightMouseButtonFunction();
 		}
 	}
+	if(button == GLUT_LEFT_BUTTON){
+		std::cout << "left button: " << state << std::endl;
+		if(state)
+			leftMouseDown = false;
+		else
+			leftMouseDown = true;
+	}
+	
 	glutPostRedisplay();
 }
 
@@ -439,29 +450,22 @@ void setupGLUT(int *argc, char *argv[])
 				// TODO: animateRope();
 				if(gameModel.getHook().getDirection().length() > 0){
 				bool didHit = gameModel.physicCtrl.collision(gameModel.getHook(), gameModel.getCave());
-				if(didHit){
-					if(changeState){
-						state = 0;
-						changeState = false;
-					}
+				if(didHit && !prepToStop){
 					prepToStop = true;
 				} else if(prepToStop) {
 					prepToStop = false;
 					// TODO
 					// bool didHitPlattform = false;
-					// for(int i = 0; i < pltPositions::size; i++){
-					//		//TODO
-					//		if((gameModel.getHook().getPosition() - pltPositions::positions[i]).length < general::plattformHitDistance)
-					//			didHitPlattform = true;
-					//	}
-					// if(didHitPlattform){
-					//		// TODO
-					//		state = 2;
-					// }
+
+					if(gameModel.physicCtrl.didHitPLattform(gameModel.getHook())){
+						state = 2;
+						gameModel.getHook().setDirection(Vec3f(0,0,0));
+						std::cout << "plattform hit" << std::endl;
+					}
 
 					Vec3f reflectionVector = gameModel.physicCtrl.getReflectionVector();
-					std::cout << "direction: " << gameModel.getHook().getDirection() << std::endl;
-					std::cout << "reflection: " << reflectionVector << std::endl;
+					// std::cout << "direction: " << gameModel.getHook().getDirection() << std::endl;
+					// std::cout << "reflection: " << reflectionVector << std::endl;
 					gameModel.getHook().setDirection(reflectionVector);
 				}
 				}
@@ -480,6 +484,19 @@ void setupGLUT(int *argc, char *argv[])
 			if(!isGrounded()){
 				mgr->setTranslation(mgr->getTranslation() - general::upVector * general::scale);
 			}
+		} else if (state == 2){
+			// TODO
+			// moveHook(); // ?
+			// moveRope();
+			// if(finished()){
+			//	state = 3;
+			// }
+		} else if (state == 3){
+			// TODO
+			// movePlattform();
+			// if(finished()){
+			//	state = 1;
+			// }
 		}
 
 		/*
@@ -521,8 +538,6 @@ int main(int argc, char **argv)
 #endif
 	try
 	{
-		std::cout << "config test: " << config::test << std::endl;
-		std::cout << "config test2: " << physics::speed << std::endl;
 		bool cfgIsSet = false;
 
 		// ChangeList needs to be set for OpenSG 1.4
@@ -561,7 +576,6 @@ int main(int argc, char **argv)
 				return EXIT_FAILURE;
 			}
 		}
-
 		cfg.printConfig();
 
 		// start servers for video rendering
@@ -572,9 +586,7 @@ int main(int argc, char **argv)
 		}
 
 		setupGLUT(&argc, argv);
-
 		InitTracker(cfg);
-
 		MultiDisplayWindowRefPtr mwin = createAppWindow(cfg, cfg.getBroadcastaddress());
 
 		mousespeed = 0.0005;
@@ -588,7 +600,6 @@ int main(int argc, char **argv)
 		NodeRecPtr root = gameModel.getScenegraphRoot().getRootNode();
 
 		commitChanges();
-
 		mgr = new OSGCSM::CAVESceneManager(&cfg);
 		mgr->setWindow(mwin );
 		mgr->setRoot(root);

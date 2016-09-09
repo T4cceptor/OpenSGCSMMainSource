@@ -368,7 +368,7 @@ void rightMouseButtonFunction(){
 	std::cout << "moving hook with strenght: " << mouseDistance << std::endl;
 	gameModel.moveHook(
 		mgr->getTranslation() + movementDirection * hook::movementOffsetScale * general::scale, 
-		-movementDirection * general::scale * ( abs(mouseDistance) / 50 )
+		-movementDirection * general::scale * ( abs(mouseDistance) / 25 )
 	);
 
 

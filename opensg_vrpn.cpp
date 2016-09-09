@@ -107,23 +107,24 @@ void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 {
 	if (button.button == 0){
-		if(button.state == 1)
-			state = 1;
-		else if(button.state == 0)
-			state = 0;
-	} else if (button.button == 1){
-		if(button.state == 1)
-			state = 2;
-		else if(button.state == 0)
-			state = 0;
+	  if(button.state == 1)
+		state = state == 0 ? 1 : 0;
 	} else if (button.button == 2){
 		if(button.state == 1){
 			start_position = wand_position;
 		} else if (button.state == 0){
 			end_position = wand_position;
 			Vec3f direction = end_position - start_position;
-			std::cout << "moving hook: " << direction << std::endl;
-			gameModel.moveHook(mgr->getTranslation() + direction * 10, direction * 100);
+			
+			// TODO: Vektor muss an Rotation der Cave angepasst werden!
+			// TODO: Rotation "1.0f" anpassen!
+			Vec3f newDirection = Matrix(
+			  Vec3f(cos(1.0f), 	0, 	-sin(1.0)),
+			  Vec3f(0, 		1, 	0),
+			  Vec3f(sin(1.0f),	0,	cos(1.0f))
+			) * direction;
+			
+			gameModel.moveHook(mgr->getTranslation() + newDirection * hook::movementOffsetScale, newDirection * general::scale * -hook::movementVectorScale);
 		}	
 	} else if(button.button == 3){
 		start_position = Vec3f(0,0,0);
@@ -308,7 +309,7 @@ Quaternion MatrixLookAt(OSG::Pnt3f from, OSG::Pnt3f at, OSG::Vec3f up){
 		Vec3f right = up % view;
 		right.normalize();
 		Vec3f newup = view % right;
-		Vec3f objForward = Vec3f(0,1,0); 
+		Vec3f objForward = Vec3f(0,0,1); 
 		Vec3f objUp = Vec3f(0,1,0);
 		float dot2 =  right * objForward;
 		Vec3f newView = Vec3f(view[0],view[1],0);

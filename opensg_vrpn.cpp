@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <ios>
+#include <time.h>
 
 #include <OpenSG/OSGGLUT.h>
 #include <OpenSG/OSGConfig.h>
@@ -30,6 +31,7 @@
 #include "PhysicsController.h"
 #include "NodeFactory.h"
 #include "Config.h"
+#include "GameController.h"
 
 OSG_USING_NAMESPACE
 
@@ -41,6 +43,7 @@ vrpn_Analog_Remote* analog = nullptr;
 
 //selfmade classes
 GameModel gameModel;
+GameController gCtrl;
 
 int tempY;
 Vec4f tempCamTo;
@@ -50,8 +53,12 @@ Vec3f camUp;
 int winWidth, winHeight, mouseX, mouseY;
 float horizontalAngle = 0, verticalAngle = 0;
 float mousespeed;
-int state;
+int gameState;
 int currentPosition = 0;
+clock_t startTime;
+float timeDelta = 0;
+int currentTick = 0;
+int readyToChangeState = 0;
 
 Quaternion wand_orientation = Quaternion();
 Vec3f wand_position = Vec3f();
@@ -107,23 +114,23 @@ void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 {
 	if (button.button == 0){
-	  if(button.state == 1)
-		state = state == 0 ? 1 : 0;
+		if(button.state == 1)
+			gameState = gameState == 0 ? 1 : 0;
 	} else if (button.button == 2){
 		if(button.state == 1){
 			start_position = wand_position;
 		} else if (button.state == 0){
 			end_position = wand_position;
 			Vec3f direction = end_position - start_position;
-			
+
 			// TODO: Vektor muss an Rotation der Cave angepasst werden!
 			// TODO: Rotation "1.0f" anpassen!
 			Vec3f newDirection = Matrix(
-			  Vec3f(cos(1.0f), 	0, 	-sin(1.0)),
-			  Vec3f(0, 		1, 	0),
-			  Vec3f(sin(1.0f),	0,	cos(1.0f))
-			) * direction;
-			
+				Vec3f(cos(1.0f), 	0, 	-sin(1.0)),
+				Vec3f(0, 		1, 	0),
+				Vec3f(sin(1.0f),	0,	cos(1.0f))
+				) * direction;
+
 			gameModel.moveHook(mgr->getTranslation() + newDirection * hook::movementOffsetScale, newDirection * general::scale * -hook::movementVectorScale);
 		}	
 	} else if(button.button == 3){
@@ -187,17 +194,17 @@ Action::ResultE leave(Node* node, Action::ResultE result){
 bool isGrounded(){
 	Line ray = Line(mgr->getTranslation() - Vec3f(0, 1 * general::scale, 0), Vec3f(0,-1,0));
 	IntersectActionRefPtr iAct = (IntersectActionRefPtr)IntersectAction::create();
-    iAct->setLine(ray);
+	iAct->setLine(ray);
 	NodeRefPtr someNode = gameModel.getCave().getRootNode();
 	iAct->apply((Node * const)someNode);
-    if (iAct->didHit())
-    {
+	if (iAct->didHit())
+	{
 		float dis = (iAct->getHitPoint().subZero() - mgr->getTranslation()).length();
 		if(dis > general::minDistanceToFloor * general::scale ){
 			return false;
 		}
 		return true;
-    }
+	}
 	return false;
 }
 
@@ -212,164 +219,137 @@ void printHookDistanceToPlattforms(){
 
 void keyboard(unsigned char k, int x, int y)
 {
-        tempCamTo.normalize();
-        Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
-		Vec3f rightDirection = (movementDirection % general::upVector);
-		float multiplier = general::movementFactor * general::scale;
-        Real32 ed;
-        switch(k)
-        {
-                case 27:
-                        cleanup();
-                        exit(EXIT_SUCCESS);
-                        break;
-				case '1':
-						state = 1;
-						std::cout << "new state: " << state << '\n';
-                        break;
-				case '2':
-						state = 2;
-						std::cout << "new state: " << state << '\n';
-                        break;
-				case 't':
-						std::cout << "state: " << state << '\n';
-						isGrounded();
-                        break;
-				case 'c':
-						currentPosition = (currentPosition + 1) % pltPositions::size;
-						mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
-						mgr->setYRotate(pltPositions::rotation[currentPosition]);
-						std::cout << "moving to position: " << currentPosition << '\n';
-                        break;
-				case 'v':
-						currentPosition = (currentPosition - 1) % pltPositions::size;
-						mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
-						mgr->setYRotate(pltPositions::rotation[currentPosition]);
-						std::cout << "moving to position: " << currentPosition << '\n';
-                        break;
-
-                case 'e':
-                        ed = mgr->getEyeSeparation() * .9f;
-                        std::cout << "Eye distance: " << ed << '\n';
-                        mgr->setEyeSeparation(ed);
-                        break;
-                case 'E':
-                        ed = mgr->getEyeSeparation() * 1.1f;
-                        std::cout << "Eye distance: " << ed << '\n';
-                        mgr->setEyeSeparation(ed);
-                        break;
-                case 'h':
-                        cfg.setFollowHead(!cfg.getFollowHead());
-                        std::cout << "following head: " << std::boolalpha << cfg.getFollowHead() << '\n';
-                        break;
-                case 'i':
-                        print_tracker();
-                        break;
-				 case 'b':
-                        printHookDistanceToPlattforms();
-                        break;
-                case 'w':
-                        mgr->setTranslation(mgr->getTranslation() - movementDirection * multiplier);
-                        // mgr->
-                        break;
-                case 'a':
-                        mgr->setTranslation(mgr->getTranslation() + rightDirection * multiplier);
-                        break;
-                case 's':
-                        mgr->setTranslation(mgr->getTranslation() + movementDirection * multiplier);
-                        break;
-                case 'd':
-                        mgr->setTranslation(mgr->getTranslation() - rightDirection * multiplier);
-                        break;
-                case 'f':
-                        std::cout << "mgr position: " << mgr->getTranslation() << std::endl;
-						std::cout << "mgr y rotation: " << mgr->getYRotate() << std::endl;
-						std::cout << "hook position: " << gameModel.getHook().getPosition() << std::endl;
-                        break;
-                case 'r':
-                        mgr->setTranslation(Vec3f(10,10,0));
-                        break;
-                case 'y':
-                        mgr->setYRotate(mgr->getYRotate() + 0.1f);
-                        tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
-                        break;
-                case 'x':
-                        mgr->setYRotate(mgr->getYRotate() - 0.1f);
-                        tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
-                        break;
-                default:
-                        std::cout << "Key '" << k << "' ignored\n";
-        }
-}
-
-Quaternion MatrixLookAt(OSG::Pnt3f from, OSG::Pnt3f at, OSG::Vec3f up){
-		// TODO Performance upgrade!!!
-		Vec3f view = at - from;
-		view.normalize();
-		Vec3f right = up % view;
-		right.normalize();
-		Vec3f newup = view % right;
-		Vec3f objForward = Vec3f(0,0,1); 
-		Vec3f objUp = Vec3f(0,1,0);
-		float dot2 =  right * objForward;
-		Vec3f newView = Vec3f(view[0],view[1],0);
-		newView.normalize();
-		float realDotXYPlane = newView * objForward;
-		float realAngle = acos(realDotXYPlane);
-		return Quaternion(objUp, dot2 > 0 ? -realAngle : realAngle);
-		// Quaternion q1 = Quaternion(objUp, dot2 > 0 ? -realAngle : realAngle);
-		/*
-		float dot3 = newup * objUp;
-		float angle2 = 0.0f;
-		if(abs(abs(dot3) - 1.0f) > 0.0001f){
-			angle2 = acos(dot3);
+	tempCamTo.normalize();
+	Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
+	Vec3f rightDirection = (movementDirection % general::upVector);
+	float multiplier = general::movementFactor * general::scale;
+	Real32 ed;
+	switch(k)
+	{
+	case 27:
+		cleanup();
+		exit(EXIT_SUCCESS);
+		break;
+	case 'q':
+		if(readyToChangeState != 0){
+			gameState = readyToChangeState;
+			readyToChangeState = 0;
 		}
-		float dot4 = view * objUp;
-		Quaternion q2 = Quaternion(Vec3f(1,0,0), dot4 < 0 ? -angle2 : angle2);
-		*/
-		// return q1;
+		break;
+	case '1':
+		gameState = 0;
+		readyToChangeState = 0;
+		std::cout << "new state: " << gameState << '\n' << "readyToChangeState: " << readyToChangeState << '\n';
+		break;
+	case '2':
+		gameState = 1;
+		readyToChangeState = 0;
+		std::cout << "new state: " << gameState << '\n' << "readyToChangeState: " << readyToChangeState << '\n';
+		break;
+	case 't':
+		std::cout << "state: " << gameState << '\n';
+		isGrounded();
+		break;
+	case 'c':
+		currentPosition = (currentPosition + 1) % pltPositions::size;
+		mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
+		mgr->setYRotate(pltPositions::rotation[currentPosition]);
+		std::cout << "moving to position: " << currentPosition << '\n';
+		break;
+	case 'v':
+		currentPosition = (currentPosition - 1) % pltPositions::size;
+		mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
+		mgr->setYRotate(pltPositions::rotation[currentPosition]);
+		std::cout << "moving to position: " << currentPosition << '\n';
+		break;
+
+	case 'e':
+		ed = mgr->getEyeSeparation() * .9f;
+		std::cout << "Eye distance: " << ed << '\n';
+		mgr->setEyeSeparation(ed);
+		break;
+	case 'E':
+		ed = mgr->getEyeSeparation() * 1.1f;
+		std::cout << "Eye distance: " << ed << '\n';
+		mgr->setEyeSeparation(ed);
+		break;
+	case 'h':
+		cfg.setFollowHead(!cfg.getFollowHead());
+		std::cout << "following head: " << std::boolalpha << cfg.getFollowHead() << '\n';
+		break;
+	case 'i':
+		print_tracker();
+		break;
+	case 'b':
+		printHookDistanceToPlattforms();
+		break;
+	case 'w':
+		mgr->setTranslation(mgr->getTranslation() - movementDirection * multiplier);
+		// mgr->
+		break;
+	case 'a':
+		mgr->setTranslation(mgr->getTranslation() + rightDirection * multiplier);
+		break;
+	case 's':
+		mgr->setTranslation(mgr->getTranslation() + movementDirection * multiplier);
+		break;
+	case 'd':
+		mgr->setTranslation(mgr->getTranslation() - rightDirection * multiplier);
+		break;
+	case 'f':
+		std::cout << "mgr position: " << mgr->getTranslation() << std::endl;
+		std::cout << "mgr y rotation: " << mgr->getYRotate() << std::endl;
+		std::cout << "hook position: " << gameModel.getHook().getPosition() << std::endl;
+		break;
+	case 'r':
+		mgr->setTranslation(Vec3f(10,10,0));
+		break;
+	case 'y':
+		mgr->setYRotate(mgr->getYRotate() + 0.1f);
+		tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
+		break;
+	case 'x':
+		mgr->setYRotate(mgr->getYRotate() - 0.1f);
+		tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
+		break;
+	default:
+		std::cout << "Key '" << k << "' ignored\n";
+	}
 }
 
 bool leftMouseDown = false;
 void motion(int x, int y) {
-        float deltaX = (mouseX - x);
-        float deltaY = (mouseY - y);
-
-		if(!leftMouseDown){
-			mouseDistance += deltaY;
-			return;
-		}
-
-        if(deltaX != 0){
-                mgr->setYRotate(mgr->getYRotate() + 0.01 * deltaX);
-                tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
-                mouseX = x;
-                deltaX = x;
-        }
-        glutPostRedisplay();
-        if(x <= 35 || x > winWidth - 35 || y <= 35 || y > winHeight - 35){
-                glutWarpPointer(winWidth/2, winHeight/2);
-                mouseX = winWidth/2;
-                mouseY = winHeight/2;
-        }
-
-		
-
+	float deltaX = (mouseX - x);
+	float deltaY = (mouseY - y);
+	if(!leftMouseDown){
+		mouseDistance += deltaY;
+		return;
+	}
+	if(deltaX != 0){
+		mgr->setYRotate(mgr->getYRotate() + 0.01 * deltaX);
+		tempCamTo = Vec4f(sin(mgr->getYRotate()),0,cos(mgr->getYRotate()),0);
+		mouseX = x;
+		deltaX = x;
+	}
+	glutPostRedisplay();
+	if(x <= 35 || x > winWidth - 35 || y <= 35 || y > winHeight - 35){
+		glutWarpPointer(winWidth/2, winHeight/2);
+		mouseX = winWidth/2;
+		mouseY = winHeight/2;
+	}
 }
-
-
 
 void rightMouseButtonFunction(){
 	// Vec3f direction = (camTo - camFrom) * 50;
 	prepToStop = false;
 	tempCamTo.normalize();
 	Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
-	
+
 	std::cout << "moving hook with strenght: " << mouseDistance << std::endl;
 	gameModel.moveHook(
 		mgr->getTranslation() + movementDirection * hook::movementOffsetScale * general::scale, 
 		-movementDirection * general::scale * ( abs(mouseDistance) / 25 )
-	);
+		);
 
 
 	// gameModel.createNewHook(camTo, direction);
@@ -398,7 +378,7 @@ void mouse(int button, int state, int x, int y) {
 		else
 			leftMouseDown = true;
 	}
-	
+
 	glutPostRedisplay();
 }
 
@@ -410,23 +390,34 @@ void enableMouseCamera(){
 	//oldTimeSinceStart = 0;
 }
 
+int calcNewTick(){
+	clock_t now = clock();
+	clock_t delta = now - startTime;
+	timeDelta = static_cast<float>(delta);
+	int seconds_elapsed = static_cast<int>(delta) / CLOCKS_PER_SEC;
+	int newTick = long(static_cast<long>(delta) / ( CLOCKS_PER_SEC / general::ticksPerSecond)) % general::ticksPerSecond;
+	return newTick;
+}
+
+void changeCurrentState(int newState){
+	if(readyToChangeState == 0){
+		readyToChangeState = newState;
+		std::cout << "next state available: " << readyToChangeState << std::endl;
+	}
+}
 
 bool changeState = false;
 void setupGLUT(int *argc, char *argv[])
 {
 	glutInit(argc, argv);
-
 	glutInitDisplayMode(GLUT_RGB  |GLUT_DEPTH | GLUT_DOUBLE);
-
 	glutCreateWindow("OpenSG CSMDemo with VRPN API");
-
 	glutDisplayFunc([]()
 	{
 		// black navigation window
 		glClear(GL_COLOR_BUFFER_BIT);
 		glutSwapBuffers();
 	});
-
 	glutReshapeFunc([](int w, int h)
 	{
 		mgr->resize(w, h);
@@ -436,79 +427,71 @@ void setupGLUT(int *argc, char *argv[])
 		mouseY = winHeight/2;
 		glutPostRedisplay();
 	});
-
 	glutKeyboardFunc(keyboard);
-
 	glutIdleFunc([]()
 	{
-		// TODO: Performance improvements
-		if(state == 1){
-			// gameModel.physicCtrl.calculateNewTick();
-
-			Vec3f direction = gameModel.getHook().getDirection();
-			if(direction.length() > 0){
-				gameModel.physicCtrl.calculateNewTickForPhysicsObject(gameModel.getHook());
-				// TODO: animateRope();
-				if(gameModel.getHook().getDirection().length() > 0){
-				bool didHit = gameModel.physicCtrl.collision(gameModel.getHook(), gameModel.getCave());
-				if(didHit && !prepToStop){
-					prepToStop = true;
-				} else if(prepToStop) {
-					prepToStop = false;
-					// TODO
-					// bool didHitPlattform = false;
-
-					if(gameModel.physicCtrl.didHitPLattform(gameModel.getHook())){
-						state = 2;
-						gameModel.getHook().setDirection(Vec3f(0,0,0));
-						std::cout << "plattform hit" << std::endl;
+		if(calcNewTick() != currentTick){
+			if(gameState == 1){
+				Vec3f direction = gameModel.getHook().getDirection();
+				if(direction.length() > 0){
+					gameModel.physicCtrl.calculateNewTickForPhysicsObject(gameModel.getHook());
+					// TODO: animateRope();
+					if(gameModel.getHook().getDirection().length() > 0){
+						bool didHit = gameModel.physicCtrl.collision(gameModel.getHook(), gameModel.getCave());
+						if(didHit && !prepToStop){
+							prepToStop = true;
+						} else if(prepToStop) {
+							prepToStop = false;
+							int pltformHit = gameModel.physicCtrl.didHitPLattform(gameModel.getHook());
+							if(pltformHit != -1){
+								// std::cout << "plattform hit" << std::endl;
+								currentPosition = pltformHit;
+								gameModel.getHook().setDirection(Vec3f(0,0,0));
+								changeCurrentState(2);
+							}
+							Vec3f reflectionVector = gameModel.physicCtrl.getReflectionVector();
+							gameModel.getHook().setDirection(reflectionVector);
+						}
 					}
-
-					Vec3f reflectionVector = gameModel.physicCtrl.getReflectionVector();
-					// std::cout << "direction: " << gameModel.getHook().getDirection() << std::endl;
-					// std::cout << "reflection: " << reflectionVector << std::endl;
-					gameModel.getHook().setDirection(reflectionVector);
 				}
+				if(!isGrounded()){
+					mgr->setTranslation(mgr->getTranslation() - general::upVector * general::scale);
+				}
+			} else if (gameState == 2){
+				// TODO: moveRope() !!!
+
+				Vec3f pltformPosition = pltPositions::positions[currentPosition] * general::scale;
+				Vec3f direction = pltformPosition - gameModel.getHook().getPosition();
+				// std::cout << "direction: " << direction << " , length: " << direction.length() << "\n";
+				if(direction.length() > physics::minDirectionLengthValue){
+					gameModel.getHook().setDirection(direction * 0.1);
+				} else {
+					gameModel.getHook().setPosition(pltformPosition[0], pltformPosition[1], pltformPosition[2]);
+					changeCurrentState(3);
+				}
+			} else if (gameState == 3){
+				// TODO
+				// movePlattform();
+				// if(finished()){
+				//	state = 1;
+				// }
+				Vec3f pltformPosition = pltPositions::positions[currentPosition] * general::scale;
+				Vec3f direction = pltformPosition - mgr->getTranslation();
+				if(direction.length() > physics::minDirectionLengthValue){
+					mgr->setTranslation(direction * 0.1);
+				} else {
+					mgr->setTranslation(pltformPosition);
+					changeCurrentState(1);
 				}
 			}
-			// TODO:
-			// if(didHitPlattform(gameModel.getHook())){
-			//		changeGameState();
-			// // evtl. in anderen GameState verschieben
-			//		animateHook(); // TODO!
-			//		animateRope(); // TODO!
-			//		when finished animation:
-			//		moveToNextPlattform();
-			//		changeGameState();
-			// }
-
-			if(!isGrounded()){
-				mgr->setTranslation(mgr->getTranslation() - general::upVector * general::scale);
-			}
-		} else if (state == 2){
-			// TODO
-			// moveHook(); // ?
-			// moveRope();
-			// if(finished()){
-			//	state = 3;
-			// }
-		} else if (state == 3){
-			// TODO
-			// movePlattform();
-			// if(finished()){
-			//	state = 1;
-			// }
 		}
-
 		/*
 		if(state == 1){
-			mgr->setTranslation(mgr->getTranslation() + wand_direction * 250);
+		mgr->setTranslation(mgr->getTranslation() + wand_direction * 250);
 		} else if (state == 2){
-			mgr->setTranslation(mgr->getTranslation() - wand_direction * 250);
+		mgr->setTranslation(mgr->getTranslation() - wand_direction * 250);
 		}
 		*/
-		
-		// mgr->setTranslation(mgr->getTranslation() + speed * analog_values);
 		check_tracker();
 		const auto speed = 1.f;
 		mgr->setUserTransform(head_position, head_orientation); // dont touch
@@ -516,9 +499,7 @@ void setupGLUT(int *argc, char *argv[])
 		mgr->redraw();
 		// the changelist should be cleared - else things could be copied multiple times
 		OSG::Thread::getCurrentChangeList()->clear();
-
 	});
-	
 	glutMotionFunc(motion);
 	glutMouseFunc(mouse);
 	// enableMouseCamera();
@@ -539,12 +520,11 @@ int main(int argc, char **argv)
 #endif
 	try
 	{
+		std::cout <<"test1" << std::endl;
 		bool cfgIsSet = false;
-
 		// ChangeList needs to be set for OpenSG 1.4
 		ChangeList::setReadWriteDefault();
 		osgInit(argc,argv);
-
 		// evaluate intial params
 		for(int a=1 ; a<argc ; ++a)
 		{
@@ -592,16 +572,26 @@ int main(int argc, char **argv)
 
 		mousespeed = 0.0005;
 		tempY = 0;
-		state = 0;
+		gameState = 1;
+		startTime = clock();
 
+		commitChanges();
+		mgr = new OSGCSM::CAVESceneManager(&cfg);
+
+		gCtrl = * new GameController();
+		gCtrl.init(mgr);
+		NodeRecPtr root = gCtrl.setupScenegraph(); // gameModel.getScenegraphRoot().getRootNode();
+		gameModel = * gCtrl.getModel();
+
+		/*
 		NodeFactory nodeFa = * new NodeFactory();
 		gameModel = * new GameModel();
 		gameModel.initGameModel(nodeFa);
 		gameModel.createScenegraph();
 		NodeRecPtr root = gameModel.getScenegraphRoot().getRootNode();
+		*/
 
-		commitChanges();
-		mgr = new OSGCSM::CAVESceneManager(&cfg);
+		
 		mgr->setWindow(mwin );
 		mgr->setRoot(root);
 		mgr->showAll();

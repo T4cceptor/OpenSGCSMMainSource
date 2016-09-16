@@ -121,17 +121,19 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 			start_position = wand_position;
 		} else if (button.state == 0){
 			end_position = wand_position;
+
 			Vec3f direction = end_position - start_position;
-
-			// TODO: Vektor muss an Rotation der Cave angepasst werden!
-			// TODO: Rotation "1.0f" anpassen!
+			float speed = direction.length(); // TODO: speed anpassen, evtl. zu groß
+			direction.normalize();
+			float rotation = mgr->getYRotate();
 			Vec3f newDirection = Matrix(
-				Vec3f(cos(1.0f), 	0, 	-sin(1.0)),
+				Vec3f(cos(rotation), 	0, 	-sin(rotation)),
 				Vec3f(0, 		1, 	0),
-				Vec3f(sin(1.0f),	0,	cos(1.0f))
+				Vec3f(sin(rotation),	0,	cos(rotation))
 				) * direction;
+			newDirection.normalize();
 
-			gameModel.moveHook(mgr->getTranslation() + newDirection * hook::movementOffsetScale, newDirection * general::scale * -hook::movementVectorScale);
+			gCtrl.moveHook(newDirection, speed); 
 		}	
 	} else if(button.button == 3){
 		start_position = Vec3f(0,0,0);
@@ -191,23 +193,6 @@ Action::ResultE leave(Node* node, Action::ResultE result){
 	return result;
 }
 
-bool isGrounded(){
-	Line ray = Line(mgr->getTranslation() - Vec3f(0, 1 * general::scale, 0), Vec3f(0,-1,0));
-	IntersectActionRefPtr iAct = (IntersectActionRefPtr)IntersectAction::create();
-	iAct->setLine(ray);
-	NodeRefPtr someNode = gameModel.getCave().getRootNode();
-	iAct->apply((Node * const)someNode);
-	if (iAct->didHit())
-	{
-		float dis = (iAct->getHitPoint().subZero() - mgr->getTranslation()).length();
-		if(dis > general::minDistanceToFloor * general::scale ){
-			return false;
-		}
-		return true;
-	}
-	return false;
-}
-
 void printHookDistanceToPlattforms(){
 	std::cout << "hook pposition: " << gameModel.getHook().getPosition()  << std::endl;
 	for(int i = 0; i < pltPositions::size; i++){
@@ -248,7 +233,6 @@ void keyboard(unsigned char k, int x, int y)
 		break;
 	case 't':
 		std::cout << "state: " << gameState << '\n';
-		isGrounded();
 		break;
 	case 'c':
 		currentPosition = (currentPosition + 1) % pltPositions::size;
@@ -340,30 +324,12 @@ void motion(int x, int y) {
 }
 
 void rightMouseButtonFunction(){
-	// Vec3f direction = (camTo - camFrom) * 50;
-	prepToStop = false;
 	tempCamTo.normalize();
 	Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
-
-	std::cout << "moving hook with strenght: " << mouseDistance << std::endl;
-	gameModel.moveHook(
-		mgr->getTranslation() + movementDirection * hook::movementOffsetScale * general::scale, 
-		-movementDirection * general::scale * ( abs(mouseDistance) / 25 )
-		);
-
-
-	// gameModel.createNewHook(camTo, direction);
-	// gameModel.createNewLight(camTo);
+	gCtrl.moveHook(movementDirection, abs(mouseDistance) / 100);
 }
 
-
 void mouse(int button, int state, int x, int y) {
-	// react to mouse button presses
-	//if (state) {
-	//	mgr->mouseButtonRelease(button, x, y);
-	//} else {
-	//	mgr->mouseButtonPress(button, x, y);
-	//}
 	if(button == GLUT_RIGHT_BUTTON){
 		if(!state){
 			mouseDistance = 0;
@@ -372,13 +338,11 @@ void mouse(int button, int state, int x, int y) {
 		}
 	}
 	if(button == GLUT_LEFT_BUTTON){
-		std::cout << "left button: " << state << std::endl;
 		if(state)
 			leftMouseDown = false;
 		else
 			leftMouseDown = true;
 	}
-
 	glutPostRedisplay();
 }
 
@@ -386,24 +350,6 @@ void enableMouseCamera(){
 	glutWarpPointer(winWidth/2, winHeight/2);
 	mouseX = winWidth/2;
 	mouseY = winHeight/2;
-	//mousePressed = true;
-	//oldTimeSinceStart = 0;
-}
-
-int calcNewTick(){
-	clock_t now = clock();
-	clock_t delta = now - startTime;
-	timeDelta = static_cast<float>(delta);
-	int seconds_elapsed = static_cast<int>(delta) / CLOCKS_PER_SEC;
-	int newTick = long(static_cast<long>(delta) / ( CLOCKS_PER_SEC / general::ticksPerSecond)) % general::ticksPerSecond;
-	return newTick;
-}
-
-void changeCurrentState(int newState){
-	if(readyToChangeState == 0){
-		readyToChangeState = newState;
-		std::cout << "next state available: " << readyToChangeState << std::endl;
-	}
 }
 
 bool changeState = false;
@@ -430,68 +376,8 @@ void setupGLUT(int *argc, char *argv[])
 	glutKeyboardFunc(keyboard);
 	glutIdleFunc([]()
 	{
-		if(calcNewTick() != currentTick){
-			if(gameState == 1){
-				Vec3f direction = gameModel.getHook().getDirection();
-				if(direction.length() > 0){
-					gameModel.physicCtrl.calculateNewTickForPhysicsObject(gameModel.getHook());
-					// TODO: animateRope();
-					if(gameModel.getHook().getDirection().length() > 0){
-						bool didHit = gameModel.physicCtrl.collision(gameModel.getHook(), gameModel.getCave());
-						if(didHit && !prepToStop){
-							prepToStop = true;
-						} else if(prepToStop) {
-							prepToStop = false;
-							int pltformHit = gameModel.physicCtrl.didHitPLattform(gameModel.getHook());
-							if(pltformHit != -1){
-								// std::cout << "plattform hit" << std::endl;
-								currentPosition = pltformHit;
-								gameModel.getHook().setDirection(Vec3f(0,0,0));
-								changeCurrentState(2);
-							}
-							Vec3f reflectionVector = gameModel.physicCtrl.getReflectionVector();
-							gameModel.getHook().setDirection(reflectionVector);
-						}
-					}
-				}
-				if(!isGrounded()){
-					mgr->setTranslation(mgr->getTranslation() - general::upVector * general::scale);
-				}
-			} else if (gameState == 2){
-				// TODO: moveRope() !!!
+		gCtrl.callGameLoop(); // Aufruf des GameLoops -> evtl. in eigenen Thread auslagern ?
 
-				Vec3f pltformPosition = pltPositions::positions[currentPosition] * general::scale;
-				Vec3f direction = pltformPosition - gameModel.getHook().getPosition();
-				// std::cout << "direction: " << direction << " , length: " << direction.length() << "\n";
-				if(direction.length() > physics::minDirectionLengthValue){
-					gameModel.getHook().setDirection(direction * 0.1);
-				} else {
-					gameModel.getHook().setPosition(pltformPosition[0], pltformPosition[1], pltformPosition[2]);
-					changeCurrentState(3);
-				}
-			} else if (gameState == 3){
-				// TODO
-				// movePlattform();
-				// if(finished()){
-				//	state = 1;
-				// }
-				Vec3f pltformPosition = pltPositions::positions[currentPosition] * general::scale;
-				Vec3f direction = pltformPosition - mgr->getTranslation();
-				if(direction.length() > physics::minDirectionLengthValue){
-					mgr->setTranslation(direction * 0.1);
-				} else {
-					mgr->setTranslation(pltformPosition);
-					changeCurrentState(1);
-				}
-			}
-		}
-		/*
-		if(state == 1){
-		mgr->setTranslation(mgr->getTranslation() + wand_direction * 250);
-		} else if (state == 2){
-		mgr->setTranslation(mgr->getTranslation() - wand_direction * 250);
-		}
-		*/
 		check_tracker();
 		const auto speed = 1.f;
 		mgr->setUserTransform(head_position, head_orientation); // dont touch
@@ -582,15 +468,6 @@ int main(int argc, char **argv)
 		gCtrl.init(mgr);
 		NodeRecPtr root = gCtrl.setupScenegraph(); // gameModel.getScenegraphRoot().getRootNode();
 		gameModel = * gCtrl.getModel();
-
-		/*
-		NodeFactory nodeFa = * new NodeFactory();
-		gameModel = * new GameModel();
-		gameModel.initGameModel(nodeFa);
-		gameModel.createScenegraph();
-		NodeRecPtr root = gameModel.getScenegraphRoot().getRootNode();
-		*/
-
 		
 		mgr->setWindow(mwin );
 		mgr->setRoot(root);

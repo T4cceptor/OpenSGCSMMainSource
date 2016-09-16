@@ -222,14 +222,12 @@ void keyboard(unsigned char k, int x, int y)
 		}
 		break;
 	case '1':
-		gameState = 0;
-		readyToChangeState = 0;
-		std::cout << "new state: " << gameState << '\n' << "readyToChangeState: " << readyToChangeState << '\n';
+		gCtrl.setGameState(0);
+		std::cout << "new state: " << gCtrl.getGameState() << '\n';
 		break;
 	case '2':
-		gameState = 1;
-		readyToChangeState = 0;
-		std::cout << "new state: " << gameState << '\n' << "readyToChangeState: " << readyToChangeState << '\n';
+		gCtrl.setGameState(1);
+		std::cout << "new state: " << gCtrl.getGameState() << '\n';
 		break;
 	case 't':
 		std::cout << "state: " << gameState << '\n';

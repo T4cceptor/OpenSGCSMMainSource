@@ -113,7 +113,8 @@ void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 
 void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 {
-	if (button.button == 0){
+	// TODO
+	if (button.button == 0){ 
 		if(button.state == 1)
 			gameState = gameState == 0 ? 1 : 0;
 	} else if (button.button == 2){
@@ -132,7 +133,6 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 				Vec3f(sin(rotation),	0,	cos(rotation))
 				) * direction;
 			newDirection.normalize();
-
 			gCtrl.moveHook(newDirection, speed); 
 		}	
 	} else if(button.button == 3){
@@ -216,10 +216,7 @@ void keyboard(unsigned char k, int x, int y)
 		exit(EXIT_SUCCESS);
 		break;
 	case 'q':
-		if(readyToChangeState != 0){
-			gameState = readyToChangeState;
-			readyToChangeState = 0;
-		}
+		gCtrl.resetGame();
 		break;
 	case '1':
 		gCtrl.setGameState(0);

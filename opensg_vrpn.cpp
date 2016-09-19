@@ -113,7 +113,7 @@ void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 
 void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 {
-	// TODO
+	// TODO: resetHook Function
 	if (button.button == 0){ 
 		if(button.state == 1)
 			gameState = gameState == 0 ? 1 : 0;
@@ -218,6 +218,9 @@ void keyboard(unsigned char k, int x, int y)
 	case 'q':
 		gCtrl.resetGame();
 		break;
+	case 'r':
+		gCtrl.resetHook();
+		break;
 	case '1':
 		gCtrl.setGameState(0);
 		std::cout << "new state: " << gCtrl.getGameState() << '\n';
@@ -230,18 +233,11 @@ void keyboard(unsigned char k, int x, int y)
 		std::cout << "state: " << gameState << '\n';
 		break;
 	case 'c':
-		currentPosition = (currentPosition + 1) % pltPositions::size;
-		mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
-		mgr->setYRotate(pltPositions::rotation[currentPosition]);
-		std::cout << "moving to position: " << currentPosition << '\n';
+		gCtrl.jumpToNextPlattform();
 		break;
 	case 'v':
-		currentPosition = (currentPosition - 1) % pltPositions::size;
-		mgr->setTranslation(pltPositions::positions[currentPosition] * general::scale);
-		mgr->setYRotate(pltPositions::rotation[currentPosition]);
-		std::cout << "moving to position: " << currentPosition << '\n';
+		gCtrl.jumpToPreviousPlattform();
 		break;
-
 	case 'e':
 		ed = mgr->getEyeSeparation() * .9f;
 		std::cout << "Eye distance: " << ed << '\n';
@@ -279,9 +275,6 @@ void keyboard(unsigned char k, int x, int y)
 		std::cout << "mgr position: " << mgr->getTranslation() << std::endl;
 		std::cout << "mgr y rotation: " << mgr->getYRotate() << std::endl;
 		std::cout << "hook position: " << gameModel.getHook().getPosition() << std::endl;
-		break;
-	case 'r':
-		mgr->setTranslation(Vec3f(10,10,0));
 		break;
 	case 'y':
 		mgr->setYRotate(mgr->getYRotate() + 0.1f);
@@ -464,6 +457,7 @@ int main(int argc, char **argv)
 		NodeRecPtr root = gCtrl.setupScenegraph(); // gameModel.getScenegraphRoot().getRootNode();
 		gameModel = * gCtrl.getModel();
 		
+		
 		mgr->setWindow(mwin );
 		mgr->setRoot(root);
 		mgr->showAll();
@@ -471,6 +465,7 @@ int main(int argc, char **argv)
 		mgr->turnWandOff();
 		mgr->setHeadlight(false);
 		mgr->setYRotate(1.0f);
+
 	}
 	catch(const std::exception& e)
 	{
@@ -478,5 +473,6 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	gCtrl.startGame();
 	glutMainLoop();
 }

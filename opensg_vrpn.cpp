@@ -60,6 +60,8 @@ float timeDelta = 0;
 int currentTick = 0;
 int readyToChangeState = 0;
 
+int buttonPressed = -1;
+
 Quaternion wand_orientation = Quaternion();
 Vec3f wand_position = Vec3f();
 Vec3f wand_direction = Vec3f();
@@ -70,6 +72,9 @@ Vec3f end_position = Vec3f(0,0,0);
 bool prepToStop = false;
 float mouseDistance = 0;
 
+Vec3f lastPosition;
+Vec3f currentDirection;
+
 void cleanup()
 {
 	delete mgr;
@@ -79,6 +84,7 @@ void cleanup()
 }
 
 void print_tracker();
+void updateCurrentDirection(Vec3f newPosition);
 
 template<typename T>
 T scale_tracker2cm(const T& value)
@@ -101,6 +107,9 @@ void VRPN_CALLBACK callback_wand_tracker(void* userData, const vrpn_TRACKERCB tr
 	wand_orientation = Quaternion(tracker.quat[0], tracker.quat[1], tracker.quat[2], tracker.quat[3]);
 	wand_position = Vec3f(scale_tracker2cm(Vec3d(tracker.pos)));
 	wand_direction =  Vec3f(wand_orientation[1], wand_orientation[2], wand_orientation[3]);
+
+	if(buttonPressed == 2)
+		updateCurrentDirection(wand_position);
 }
 
 auto analog_values = Vec3f();
@@ -114,26 +123,45 @@ void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 {
 	// TODO: resetHook Function
+	if(button.state == 0)
+		buttonPressed = -1;
+	else if(button.state == 1)
+		buttonPressed = button.button;
+
 	if (button.button == 0){ 
-		if(button.state == 1)
+		if(button.state == 1){
 			gameState = gameState == 0 ? 1 : 0;
+			
+		}
+			
 	} else if (button.button == 2){
 		if(button.state == 1){
 			start_position = wand_position;
 		} else if (button.state == 0){
-			end_position = wand_position;
 
-			Vec3f direction = end_position - start_position;
-			float speed = direction.length(); // TODO: speed anpassen, evtl. zu groß
-			direction.normalize();
 			float rotation = mgr->getYRotate();
+			Vec3f direction = currentDirection;
+			direction.normalize();
 			Vec3f newDirection = Matrix(
 				Vec3f(cos(rotation), 	0, 	-sin(rotation)),
 				Vec3f(0, 		1, 	0),
 				Vec3f(sin(rotation),	0,	cos(rotation))
 				) * direction;
-			newDirection.normalize();
-			gCtrl.moveHook(newDirection, speed); 
+
+			gCtrl.moveHook(newDirection, currentDirection.length());
+
+			//end_position = wand_position;
+			//Vec3f direction = end_position - start_position;
+			//float speed = direction.length(); // TODO: speed anpassen, evtl. zu groß
+			//direction.normalize();
+			//float rotation = mgr->getYRotate();
+			//Vec3f newDirection = Matrix(
+			//	Vec3f(cos(rotation), 	0, 	-sin(rotation)),
+			//	Vec3f(0, 		1, 	0),
+			//	Vec3f(sin(rotation),	0,	cos(rotation))
+			//	) * direction;
+			//newDirection.normalize();
+			//gCtrl.moveHook(newDirection, speed); 
 		}	
 	} else if(button.button == 3){
 		start_position = Vec3f(0,0,0);
@@ -141,6 +169,12 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 		gameModel.moveHook(mgr->getTranslation() + Vec3f(0,-250,-1000), Vec3f(0,0,0));
 		print_tracker();
 	}
+}
+
+void updateCurrentDirection(Vec3f newPosition){
+	if(lastPosition != newPosition)
+		currentDirection += newPosition - lastPosition;
+	lastPosition = newPosition;
 }
 
 void InitTracker(OSGCSM::CAVEConfig &cfg)
@@ -274,7 +308,8 @@ void keyboard(unsigned char k, int x, int y)
 	case 'f':
 		std::cout << "mgr position: " << mgr->getTranslation() << std::endl;
 		std::cout << "mgr y rotation: " << mgr->getYRotate() << std::endl;
-		std::cout << "hook position: " << gameModel.getHook().getPosition() << std::endl;
+		std::cout << "hook position: " << gCtrl.getModel()->getHook().getPosition() << std::endl;
+		std::cout << "hook look at: " << gCtrl.getModel()->getHook().getLookAt() << std::endl;
 		break;
 	case 'y':
 		mgr->setYRotate(mgr->getYRotate() + 0.1f);
@@ -364,6 +399,7 @@ void setupGLUT(int *argc, char *argv[])
 	glutKeyboardFunc(keyboard);
 	glutIdleFunc([]()
 	{
+		gCtrl.setRopeOrigin(mgr->getTranslation() - Vec3f(0,1,0));
 		gCtrl.callGameLoop(); // Aufruf des GameLoops -> evtl. in eigenen Thread auslagern ?
 
 		check_tracker();
@@ -447,6 +483,8 @@ int main(int argc, char **argv)
 		mousespeed = 0.0005;
 		tempY = 0;
 		gameState = 1;
+		currentDirection = Vec3f(0,0,0);
+		lastPosition = Vec3f(0,0,0);
 		startTime = clock();
 
 		commitChanges();
@@ -474,5 +512,6 @@ int main(int argc, char **argv)
 	}
 
 	gCtrl.startGame();
+
 	glutMainLoop();
 }

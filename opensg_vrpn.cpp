@@ -26,12 +26,12 @@
 #include <vrpn_Button.h>
 #include <vrpn_Analog.h>
 
-#include "GameModel.h"
+#include "GameController.h"
+//#include "GameModel.h"
 #include "VRGPhysicsObject.h"
 #include "PhysicsController.h"
 #include "NodeFactory.h"
 #include "Config.h"
-#include "GameController.h"
 
 OSG_USING_NAMESPACE
 
@@ -107,7 +107,8 @@ void VRPN_CALLBACK callback_wand_tracker(void* userData, const vrpn_TRACKERCB tr
 	wand_orientation = Quaternion(tracker.quat[0], tracker.quat[1], tracker.quat[2], tracker.quat[3]);
 	wand_position = Vec3f(scale_tracker2cm(Vec3d(tracker.pos)));
 	wand_direction =  Vec3f(wand_orientation[1], wand_orientation[2], wand_orientation[3]);
-
+	
+	gCtrl.setRopeOrigin(mgr->getTranslation() + wand_position);
 	if(buttonPressed == 2)
 		updateCurrentDirection(wand_position);
 }
@@ -131,37 +132,28 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 	if (button.button == 0){ 
 		if(button.state == 1){
 			gameState = gameState == 0 ? 1 : 0;
-			
 		}
-			
 	} else if (button.button == 2){
 		if(button.state == 1){
+			currentDirection = Vec3f(0,0,0);
 			start_position = wand_position;
 		} else if (button.state == 0){
-
-			float rotation = mgr->getYRotate();
-			Vec3f direction = currentDirection;
-			direction.normalize();
-			Vec3f newDirection = Matrix(
-				Vec3f(cos(rotation), 	0, 	-sin(rotation)),
-				Vec3f(0, 		1, 	0),
-				Vec3f(sin(rotation),	0,	cos(rotation))
+			if(gCtrl.getGameState() == 1){
+				float rotation = mgr->getYRotate();
+				Vec3f direction = currentDirection;
+				direction.normalize();
+				Vec3f newDirection = Matrix(
+					Vec3f(cos(rotation), 	0, 	-sin(rotation)),
+					Vec3f(0, 		1, 	0),
+					Vec3f(sin(rotation),	0,	cos(rotation))
 				) * direction;
-
-			gCtrl.moveHook(newDirection, currentDirection.length());
-
-			//end_position = wand_position;
-			//Vec3f direction = end_position - start_position;
-			//float speed = direction.length(); // TODO: speed anpassen, evtl. zu groß
-			//direction.normalize();
-			//float rotation = mgr->getYRotate();
-			//Vec3f newDirection = Matrix(
-			//	Vec3f(cos(rotation), 	0, 	-sin(rotation)),
-			//	Vec3f(0, 		1, 	0),
-			//	Vec3f(sin(rotation),	0,	cos(rotation))
-			//	) * direction;
-			//newDirection.normalize();
-			//gCtrl.moveHook(newDirection, speed); 
+				newDirection.normalize();
+				gCtrl.moveHook(-newDirection, currentDirection.length());
+			} else if (gCtrl.getGameState() == 2){
+				// TODO
+			}else if(gCtrl.getGameState() == 3){
+				// TODO
+			}
 		}	
 	} else if(button.button == 3){
 		start_position = Vec3f(0,0,0);
@@ -172,8 +164,10 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 }
 
 void updateCurrentDirection(Vec3f newPosition){
-	if(lastPosition != newPosition)
-		currentDirection += newPosition - lastPosition;
+	if(lastPosition != newPosition){
+		currentDirection = currentDirection * 0.5 + (newPosition - lastPosition);
+		
+	}
 	lastPosition = newPosition;
 }
 
@@ -399,7 +393,7 @@ void setupGLUT(int *argc, char *argv[])
 	glutKeyboardFunc(keyboard);
 	glutIdleFunc([]()
 	{
-		gCtrl.setRopeOrigin(mgr->getTranslation() - Vec3f(0,1,0));
+		//gCtrl.setRopeOrigin(mgr->getTranslation() - Vec3f(0,1,0));
 		gCtrl.callGameLoop(); // Aufruf des GameLoops -> evtl. in eigenen Thread auslagern ?
 
 		check_tracker();

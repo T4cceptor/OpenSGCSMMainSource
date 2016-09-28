@@ -247,7 +247,7 @@ void keyboard(unsigned char k, int x, int y)
 		gCtrl.resetGame();
 		break;
 	case 'r':
-		gCtrl.resetHook();
+		gCtrl.resetGameState(gCtrl.getGameState());
 		break;
 	case '1':
 		gCtrl.setGameState(0);

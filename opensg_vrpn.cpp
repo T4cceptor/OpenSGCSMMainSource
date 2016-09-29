@@ -117,8 +117,12 @@ auto analog_values = Vec3f();
 
 void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 {
-	if (analog.num_channel >= 2)
+	if (analog.num_channel >= 2){
 		analog_values = Vec3f(analog.channel[0], 0, -analog.channel[1]);
+		std::cout << "analog.channel[0]: " << analog.channel[0] << " ,-analog.channel[1]: " << -analog.channel[1] << "\n";
+		float newRotation = mgr->getYRotate() + analog.channel[0] / 10;
+		mgr->setYRotate(newRotation);
+	}
 }
 
 void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
@@ -341,8 +345,14 @@ void motion(int x, int y) {
 }
 
 void rightMouseButtonFunction(){
-	tempCamTo.normalize();
-	Vec3f movementDirection = Vec3f(tempCamTo[0],tempCamTo[1],tempCamTo[2]);
+	float rotation = mgr->getYRotate();
+	Vec3f tempVec = Matrix(
+					Vec3f(cos(rotation), 	0, 	-sin(rotation)),
+					Vec3f(0, 		1, 	0),
+					Vec3f(sin(rotation),	0,	cos(rotation))
+				) * Vec3f(0, 0, 1);
+	tempVec.normalize();
+	Vec3f movementDirection = Vec3f(tempVec[0],tempVec[1],tempVec[2]);
 	gCtrl.moveHook(movementDirection, abs(mouseDistance) / 100);
 }
 

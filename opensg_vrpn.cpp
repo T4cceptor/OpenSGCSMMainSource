@@ -27,10 +27,6 @@
 #include <vrpn_Analog.h>
 
 #include "GameController.h"
-//#include "GameModel.h"
-#include "VRGPhysicsObject.h"
-#include "PhysicsController.h"
-#include "NodeFactory.h"
 #include "Config.h"
 
 OSG_USING_NAMESPACE
@@ -50,9 +46,10 @@ auto head_position = Vec3f(0.f, 170.f, 200.f);	// a 1.7m Person 2m in front of t
 
 auto analog_values = Vec3f();
 
+// controls every aspect of the game
+GameController gCtrl; 
 
-GameController gCtrl; // controls the game
-
+// current look vector of the player / cave
 Vec4f tempCamTo;
 
 // mouse input variables
@@ -70,8 +67,6 @@ Vec3f start_position = Vec3f(0,0,0);
 Vec3f end_position = Vec3f(0,0,0);
 Vec3f lastPosition;
 Vec3f currentDirection;
-
-
 
 void cleanup()
 {
@@ -110,6 +105,8 @@ void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 	if (analog.num_channel >= 2){
 		analog_values = Vec3f(analog.channel[0], 0, -analog.channel[1]);
 		std::cout << "analog.channel[0]: " << analog.channel[0] << " ,-analog.channel[1]: " << -analog.channel[1] << "\n";
+		
+		// TODO
 		float newRotation = mgr->getYRotate() + analog.channel[0] / 10;
 		mgr->setYRotate(newRotation);
 	}
@@ -164,6 +161,7 @@ void updateCurrentDirection(Vec3f newPosition){
 		// TODO
 	} else if(gCtrl.getGameState() == 3){
 		gCtrl.moveTowardsPlattform(currentDirection);
+		
 	}
 }
 
@@ -343,9 +341,13 @@ void mouse(int button, int state, int x, int y) {
 		if(state){
 			leftMouseDown = false;
 			gCtrl.leftMouseDown = false;
+
 		} else {
 			leftMouseDown = true;
 			gCtrl.leftMouseDown = true;
+			
+			Vec3f m = Vec3f(tempCamTo[0], tempCamTo[1], tempCamTo[2]) * 20;
+			gCtrl.moveTowardsPlattform(m);
 		}
 	}
 	glutPostRedisplay();

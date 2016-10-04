@@ -35,45 +35,43 @@
 
 OSG_USING_NAMESPACE
 
+// CAVE variables
 OSGCSM::CAVEConfig cfg;
 OSGCSM::CAVESceneManager *mgr = nullptr;
 vrpn_Tracker_Remote* tracker =  nullptr;
 vrpn_Button_Remote* button = nullptr;
 vrpn_Analog_Remote* analog = nullptr;
 
-//selfmade classes
-GameModel gameModel;
-GameController gCtrl;
+void print_tracker();
+void updateCurrentDirection(Vec3f newPosition);
 
-int tempY;
+auto head_orientation = Quaternion(Vec3f(0.f, 1.f, 0.f), 3.141f);
+auto head_position = Vec3f(0.f, 170.f, 200.f);	// a 1.7m Person 2m in front of the scene
+
+auto analog_values = Vec3f();
+
+
+GameController gCtrl; // controls the game
+
 Vec4f tempCamTo;
-Pnt3f camFrom;
-Pnt3f camTo;
-Vec3f camUp;
+
+// mouse input variables
+bool leftMouseDown = false;
+bool rightMouseDown = false;
 int winWidth, winHeight, mouseX, mouseY;
-float horizontalAngle = 0, verticalAngle = 0;
-float mousespeed;
-int gameState;
-int currentPosition = 0;
-clock_t startTime;
-float timeDelta = 0;
-int currentTick = 0;
-int readyToChangeState = 0;
+float mouseDistance = 0;
 
+// wand input variables
 int buttonPressed = -1;
-
 Quaternion wand_orientation = Quaternion();
 Vec3f wand_position = Vec3f();
 Vec3f wand_direction = Vec3f();
-
 Vec3f start_position = Vec3f(0,0,0);
 Vec3f end_position = Vec3f(0,0,0);
-
-bool prepToStop = false;
-float mouseDistance = 0;
-
 Vec3f lastPosition;
 Vec3f currentDirection;
+
+
 
 void cleanup()
 {
@@ -83,18 +81,12 @@ void cleanup()
 	delete analog;
 }
 
-void print_tracker();
-void updateCurrentDirection(Vec3f newPosition);
-
 template<typename T>
 T scale_tracker2cm(const T& value)
 {
 	static const float scale = OSGCSM::convert_length(cfg.getUnits(), 1.f, OSGCSM::CAVEConfig::CAVEUnitCentimeters);
 	return value * scale;
 }
-
-auto head_orientation = Quaternion(Vec3f(0.f, 1.f, 0.f), 3.141f);
-auto head_position = Vec3f(0.f, 170.f, 200.f);	// a 1.7m Person 2m in front of the scene
 
 void VRPN_CALLBACK callback_head_tracker(void* userData, const vrpn_TRACKERCB tracker)
 {
@@ -107,13 +99,11 @@ void VRPN_CALLBACK callback_wand_tracker(void* userData, const vrpn_TRACKERCB tr
 	wand_orientation = Quaternion(tracker.quat[0], tracker.quat[1], tracker.quat[2], tracker.quat[3]);
 	wand_position = Vec3f(scale_tracker2cm(Vec3d(tracker.pos)));
 	wand_direction =  Vec3f(wand_orientation[1], wand_orientation[2], wand_orientation[3]);
-	
-	gCtrl.setRopeOrigin(mgr->getTranslation() + wand_position);
-	if(buttonPressed == 2)
-		updateCurrentDirection(wand_position);
-}
 
-auto analog_values = Vec3f();
+	if(buttonPressed == 2){
+		updateCurrentDirection(wand_position);
+	}
+}
 
 void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 {
@@ -127,7 +117,6 @@ void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 
 void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 {
-	// TODO: resetHook Function
 	if(button.state == 0)
 		buttonPressed = -1;
 	else if(button.state == 1)
@@ -135,7 +124,7 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 
 	if (button.button == 0){ 
 		if(button.state == 1){
-			gameState = gameState == 0 ? 1 : 0;
+			// TODO
 		}
 	} else if (button.button == 2){
 		if(button.state == 1){
@@ -160,19 +149,22 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 			}
 		}	
 	} else if(button.button == 3){
-		start_position = Vec3f(0,0,0);
-		end_position = Vec3f(0,0,0);
-		gameModel.moveHook(mgr->getTranslation() + Vec3f(0,-250,-1000), Vec3f(0,0,0));
-		print_tracker();
+		// TODO
 	}
 }
 
+// TODO, evtl herzeigen
 void updateCurrentDirection(Vec3f newPosition){
 	if(lastPosition != newPosition){
-		currentDirection = currentDirection * 0.5 + (newPosition - lastPosition);
-		
+		currentDirection = currentDirection * 0.5 + (newPosition - lastPosition);	
 	}
 	lastPosition = newPosition;
+
+	if(gCtrl.getGameState() == 1){
+		// TODO
+	} else if(gCtrl.getGameState() == 3){
+		gCtrl.moveTowardsPlattform(currentDirection);
+	}
 }
 
 void InitTracker(OSGCSM::CAVEConfig &cfg)
@@ -213,27 +205,6 @@ void print_tracker()
 	std::cout << "direction: " << wand_direction << '\n';
 }
 
-/*----------9.1----------*/
-Action::ResultE enter(Node* node){
-	// if(node->getCore()->getType().isDerivedFrom(ComponentTransform::getClassType()))
-	std::cout << "Enter node : " << node << std::endl;
-	return Action::Continue;
-}
-
-Action::ResultE leave(Node* node, Action::ResultE result){
-	std::cout << "Leaving node: " << node << "with code: " << result << std::endl;
-	return result;
-}
-
-void printHookDistanceToPlattforms(){
-	std::cout << "hook pposition: " << gameModel.getHook().getPosition()  << std::endl;
-	for(int i = 0; i < pltPositions::size; i++){
-		Vec3f scaledPosition = pltPositions::positions[i] * general::scale;
-		float distance =  (gameModel.getHook().getPosition() - scaledPosition).length();
-		std::cout << "plattform: " << i << "  ,distance: " << distance << "  ,plattform position: " << pltPositions::positions[i] << std::endl;
-	}
-}
-
 void keyboard(unsigned char k, int x, int y)
 {
 	tempCamTo.normalize();
@@ -262,7 +233,6 @@ void keyboard(unsigned char k, int x, int y)
 		std::cout << "new state: " << gCtrl.getGameState() << '\n';
 		break;
 	case 't':
-		std::cout << "state: " << gameState << '\n';
 		break;
 	case 'c':
 		gCtrl.jumpToNextPlattform();
@@ -288,7 +258,6 @@ void keyboard(unsigned char k, int x, int y)
 		print_tracker();
 		break;
 	case 'b':
-		printHookDistanceToPlattforms();
 		break;
 	case 'w':
 		mgr->setTranslation(mgr->getTranslation() - movementDirection * multiplier);
@@ -322,7 +291,6 @@ void keyboard(unsigned char k, int x, int y)
 	}
 }
 
-bool leftMouseDown = false;
 void motion(int x, int y) {
 	float deltaX = (mouseX - x);
 	float deltaY = (mouseY - y);
@@ -342,44 +310,47 @@ void motion(int x, int y) {
 		mouseX = winWidth/2;
 		mouseY = winHeight/2;
 	}
+
 }
 
 void rightMouseButtonFunction(){
-	float rotation = mgr->getYRotate();
-	Vec3f tempVec = Matrix(
+	if(gCtrl.getGameState() == 1){
+		float rotation = mgr->getYRotate();
+		Vec3f tempVec = Matrix(
 					Vec3f(cos(rotation), 	0, 	-sin(rotation)),
 					Vec3f(0, 		1, 	0),
 					Vec3f(sin(rotation),	0,	cos(rotation))
 				) * Vec3f(0, 0, 1);
-	tempVec.normalize();
-	Vec3f movementDirection = Vec3f(tempVec[0],tempVec[1],tempVec[2]);
-	gCtrl.moveHook(movementDirection, abs(mouseDistance) / 100);
+		tempVec.normalize();
+		Vec3f movementDirection = Vec3f(tempVec[0],tempVec[1],tempVec[2]);
+		gCtrl.moveHook(movementDirection, abs(mouseDistance) / 100);
+	}
 }
 
 void mouse(int button, int state, int x, int y) {
 	if(button == GLUT_RIGHT_BUTTON){
 		if(!state){
 			mouseDistance = 0;
+			rightMouseDown = true;
+			gCtrl.rightMouseDown = true;
 		} else {
 			rightMouseButtonFunction();
+			rightMouseDown = false;
+			gCtrl.rightMouseDown = false;
 		}
 	}
 	if(button == GLUT_LEFT_BUTTON){
-		if(state)
+		if(state){
 			leftMouseDown = false;
-		else
+			gCtrl.leftMouseDown = false;
+		} else {
 			leftMouseDown = true;
+			gCtrl.leftMouseDown = true;
+		}
 	}
 	glutPostRedisplay();
 }
 
-void enableMouseCamera(){
-	glutWarpPointer(winWidth/2, winHeight/2);
-	mouseX = winWidth/2;
-	mouseY = winHeight/2;
-}
-
-bool changeState = false;
 void setupGLUT(int *argc, char *argv[])
 {
 	glutInit(argc, argv);
@@ -403,14 +374,15 @@ void setupGLUT(int *argc, char *argv[])
 	glutKeyboardFunc(keyboard);
 	glutIdleFunc([]()
 	{
-		//gCtrl.setRopeOrigin(mgr->getTranslation() - Vec3f(0,1,0));
-		gCtrl.callGameLoop(); // Aufruf des GameLoops -> evtl. in eigenen Thread auslagern ?
+		// GameLoop gets called, this should be implemented in a seperated thread (TODO)
+		gCtrl.callGameLoop(); 
 
 		check_tracker();
-		const auto speed = 1.f;
+		const auto speed = 1.f; // needed - ?
 		mgr->setUserTransform(head_position, head_orientation); // dont touch
 		commitChanges();
 		mgr->redraw();
+
 		// the changelist should be cleared - else things could be copied multiple times
 		OSG::Thread::getCurrentChangeList()->clear();
 	});
@@ -419,9 +391,6 @@ void setupGLUT(int *argc, char *argv[])
 	// enableMouseCamera();
 	// glutPassiveMotionFunc(motion);
 
-	camFrom = * new Pnt3f(0,0,0);
-	camTo = * new Pnt3f(1,0,0);
-	camUp = * new Vec3f(0,0,1);
 	tempCamTo = * new Vec4f(0,0,-1,0);
 }
 
@@ -434,7 +403,6 @@ int main(int argc, char **argv)
 #endif
 	try
 	{
-		std::cout <<"test1" << std::endl;
 		bool cfgIsSet = false;
 		// ChangeList needs to be set for OpenSG 1.4
 		ChangeList::setReadWriteDefault();
@@ -484,21 +452,17 @@ int main(int argc, char **argv)
 		InitTracker(cfg);
 		MultiDisplayWindowRefPtr mwin = createAppWindow(cfg, cfg.getBroadcastaddress());
 
-		mousespeed = 0.0005;
-		tempY = 0;
-		gameState = 1;
 		currentDirection = Vec3f(0,0,0);
 		lastPosition = Vec3f(0,0,0);
-		startTime = clock();
 
 		commitChanges();
 		mgr = new OSGCSM::CAVESceneManager(&cfg);
 
 		gCtrl = * new GameController();
+		// GameController gets initialised with the CAVESceneManager
 		gCtrl.init(mgr);
-		NodeRecPtr root = gCtrl.setupScenegraph(); // gameModel.getScenegraphRoot().getRootNode();
-		gameModel = * gCtrl.getModel();
-		
+		// the scenegraph is created and returned
+		NodeRecPtr root = gCtrl.setupScenegraph();
 		
 		mgr->setWindow(mwin );
 		mgr->setRoot(root);
@@ -515,7 +479,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	// game is started, now input is possible
 	gCtrl.startGame();
-
 	glutMainLoop();
 }

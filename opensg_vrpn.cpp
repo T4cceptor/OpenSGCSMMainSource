@@ -68,8 +68,10 @@ Vec3f end_position = Vec3f(0,0,0);
 Vec3f lastPosition;
 Vec3f currentDirection;
 
-void cleanup()
-{
+float throwScale = 1.0f;
+
+
+void cleanup() {
 	delete mgr;
 	delete tracker;
 	delete button;
@@ -102,13 +104,19 @@ void VRPN_CALLBACK callback_wand_tracker(void* userData, const vrpn_TRACKERCB tr
 
 void VRPN_CALLBACK callback_analog(void* userData, const vrpn_ANALOGCB analog)
 {
-	if (analog.num_channel >= 2){
+	if ( analog.num_channel >= 2 ){
 		analog_values = Vec3f(analog.channel[0], 0, -analog.channel[1]);
 		std::cout << "analog.channel[0]: " << analog.channel[0] << " ,-analog.channel[1]: " << -analog.channel[1] << "\n";
 		
-		// TODO
-		float newRotation = mgr->getYRotate() + analog.channel[0] / 10;
-		mgr->setYRotate(newRotation);
+		if(analog.channel[0] >= 0.8 || analog.channel[0] <= -0.8){
+		  float newRotation = mgr->getYRotate() - analog.channel[0] / 20;
+		  mgr->setYRotate(newRotation);
+		}
+		if(analog.channel[1] >= 0.8 || analog.channel[1] <= -0.8){
+		  throwScale += analog.channel[1] / 10;
+		  std::cout << "throw scale: " << throwScale << "\n";
+		}
+		
 	}
 }
 
@@ -121,7 +129,7 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 
 	if (button.button == 0){ 
 		if(button.state == 1){
-			// TODO
+			gCtrl.resetGameState(1);
 		}
 	} else if (button.button == 2){
 		if(button.state == 1){
@@ -138,7 +146,7 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 					Vec3f(sin(rotation),	0,	cos(rotation))
 				) * direction;
 				newDirection.normalize();
-				gCtrl.moveHook(-newDirection, currentDirection.length());
+				gCtrl.moveHook(-newDirection, currentDirection.length() * throwScale);
 			} else if (gCtrl.getGameState() == 2){
 				// TODO
 			}else if(gCtrl.getGameState() == 3){
@@ -146,7 +154,9 @@ void VRPN_CALLBACK callback_button(void* userData, const vrpn_BUTTONCB button)
 			}
 		}	
 	} else if(button.button == 3){
-		// TODO
+	    if(button.state == 1){
+		gCtrl.jumpToNextPlattform();
+	    }
 	}
 }
 
